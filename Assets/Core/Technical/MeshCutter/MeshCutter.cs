@@ -17,14 +17,13 @@ public class MeshCutter : MonoBehaviour
     [SerializeField] private ComputeShader cutterShader = null;
     [SerializeField] private MeshFilter cutMesh = null;
     [SerializeField] private Vector3[] cutpoints = new Vector3[3];
-    [SerializeField] private TriangleData[] _triangles;
     #endregion
 
     #region Methods
     void CutMesh()
     {
         // Init Triangles struct
-        _triangles = new TriangleData[cutMesh.mesh.triangles.Length / 3];
+        TriangleData[] _triangles = new TriangleData[cutMesh.mesh.triangles.Length / 3];
         int _index = 0;
         for (int i = 0; i < cutMesh.mesh.triangles.Length; i+=3)
         {
@@ -229,18 +228,20 @@ public class MeshCutter : MonoBehaviour
         _leftMeshData.Resize();
 
         Mesh _rightMesh = new Mesh();
-        _rightMesh.triangles = _rightMeshData.Triangles.Array;
-        _rightMesh.vertices = _rightMeshData.Vertices.Array;
-        _rightMesh.normals = _rightMeshData.Normals.Array;
-        _rightMesh.uv = _rightMeshData.UVs.Array;
+        _rightMesh.SetVertices(_rightMeshData.Vertices.Array);
+        _rightMesh.SetTriangles(_rightMeshData.Triangles.Array, 0);
+        _rightMesh.SetNormals(_rightMeshData.Normals.Array);
+        _rightMesh.SetUVs(0, _rightMeshData.UVs.Array);
+
         cutMesh.mesh = _rightMesh;
 
-        MeshFilter _filter = Instantiate(cutMesh, cutMesh.transform.position, Quaternion.identity);
+        MeshFilter _filter = Instantiate(cutMesh, cutMesh.transform.position, Quaternion.identity, cutMesh.transform.parent);
         Mesh _leftMesh = new Mesh();
-        _leftMesh.vertices = _leftMeshData.Vertices.Array;
-        _leftMesh.triangles = _leftMeshData.Triangles.Array;
-        _leftMesh.normals = _leftMeshData.Normals.Array;
-        _leftMesh.uv = _leftMeshData.UVs.Array;
+        _leftMesh.SetVertices(_leftMeshData.Vertices.Array);
+        _leftMesh.SetTriangles(_leftMeshData.Triangles.Array, 0);
+        _leftMesh.SetNormals(_leftMeshData.Normals.Array);
+        _leftMesh.SetUVs(0, _leftMeshData.UVs.Array);
+
         _filter.mesh = _leftMesh;
     }
 
@@ -257,9 +258,9 @@ public class MeshCutter : MonoBehaviour
     {
         for (int i = 0; i < cutpoints.Length; i++)
         {
-            Gizmos.DrawSphere(cutpoints[i], .1f);
+            Gizmos.DrawSphere(transform.position + cutpoints[i], .1f);
             if (i < cutpoints.Length - 1)
-                Gizmos.DrawLine(cutpoints[i], cutpoints[i + 1]);
+                Gizmos.DrawLine( transform.position + cutpoints[i], transform.position + cutpoints[i + 1]);
         }
     }
     #endregion
