@@ -1,0 +1,22 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CutMesh
+
+struct TriangleData
+{
+    int3 Vertices;
+    int3 Side;
+};
+
+float3 planePoint;
+float3 planeNormal;
+StructuredBuffer<float3> meshPointsBuffer; // All points of the mesh
+RWStructuredBuffer<TriangleData> trianglesBuffer; // All side of the points according to the cutting plane
+
+[numthreads(8,1,1)]
+void CutMesh (uint3 id : SV_DispatchThreadID)
+{
+    for(int _j = 0; _j < 3; _j++)
+    {
+        trianglesBuffer[id.x].Side[_j] = sign(dot(meshPointsBuffer[trianglesBuffer[id.x].Vertices[_j]] - planePoint, planeNormal));
+    }
+}
