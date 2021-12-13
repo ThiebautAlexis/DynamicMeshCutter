@@ -7,11 +7,14 @@ using UnityEngine;
 
 public class MeshCutter : MonoBehaviour
 {
-    private static readonly string kernelName = "CutMesh";
+    private static readonly string cutMeshKernelName = "CutMesh";
+    private static readonly string sliceTrianglesKernelName = "SliceTriangles";
     private static readonly string planePointName = "planePoint";
     private static readonly string planeNormalName = "planeNormal";
     private static readonly string meshPointsBufferName = "meshPointsBuffer";
     private static readonly string trianglesBufferName = "trianglesBuffer";
+    private static readonly string slicedTrianglesBufferName = "slicedTrianglesBuffer";
+
 
     #region Fields and Properties
     [SerializeField] private ComputeShader cutterShader = null;
@@ -36,7 +39,7 @@ public class MeshCutter : MonoBehaviour
         }
         Vector3 _planeNormal = Vector3.Cross(cutpoints[1] - cutpoints[0], cutpoints[2] - cutpoints[0]);
 
-        int _kernelIndex = cutterShader.FindKernel(kernelName);
+        int _kernelIndex = cutterShader.FindKernel(cutMeshKernelName);
         // Set Mesh Points
         ComputeBuffer _meshPointsBuffer = new ComputeBuffer(cutMesh.mesh.vertexCount, sizeof(float) * 3);
         _meshPointsBuffer.SetData(cutMesh.mesh.vertices);
@@ -57,6 +60,7 @@ public class MeshCutter : MonoBehaviour
 
         CutMeshData _rightMeshData = new CutMeshData();
         CutMeshData _leftMeshData = new CutMeshData();
+        Buffer<SlicedTriangleData> _slicedTriangles = new Buffer<SlicedTriangleData>(0,1);
 
         for (int i = 0; i < _triangles.Length; i++)
         {
@@ -74,156 +78,89 @@ public class MeshCutter : MonoBehaviour
             }
             else
             {
-                Vector3 _pO, _lA, _lB, _pNormal, _pX, _pY;
-                int _side = 0;
+
                 if (_triangles[i].Side.x != _triangles[i].Side.y && _triangles[i].Side.y == _triangles[i].Side.z) // get the unique point
                 {
-                    _side = _triangles[i].Side.x;
-                    _pNormal = cutMesh.mesh.normals[_triangles[i].Vertices.x];
-
-                    _pO = cutMesh.mesh.vertices[_triangles[i].Vertices.x];                                                   // origin of the intersection
-                    _pX = cutMesh.mesh.vertices[_triangles[i].Vertices.y];
-                    _pY = cutMesh.mesh.vertices[_triangles[i].Vertices.z];
-
-                    _lA = cutMesh.mesh.vertices[_triangles[i].Vertices.y] - cutMesh.mesh.vertices[_triangles[i].Vertices.x]; // direction of the line A
-                    _lB = cutMesh.mesh.vertices[_triangles[i].Vertices.z] - cutMesh.mesh.vertices[_triangles[i].Vertices.x]; // direction of the line B
+                    _slicedTriangles.Add(new SlicedTriangleData
+                    {
+                        Triangle1Vertex1 = cutMesh.mesh.vertices[_triangles[i].Vertices.x],
+                        Triangle1Vertex2 = cutMesh.mesh.vertices[_triangles[i].Vertices.y],
+                        Triangle1Vertex3 = cutMesh.mesh.vertices[_triangles[i].Vertices.z],
+                        Triangle2Vertex1 = Vector3.zero,
+                        Triangle2Vertex2 = Vector3.zero,
+                        Triangle2Vertex3 = Vector3.zero,
+                        Triangle3Vertex1 = Vector3.zero,
+                        Triangle3Vertex2 = Vector3.zero,
+                        Triangle3Vertex3 = Vector3.zero,
+                        FirstSide = _triangles[i].Side.x
+                    });
                 }
                 else if (_triangles[i].Side.x != _triangles[i].Side.y && _triangles[i].Side.x == _triangles[i].Side.z)
                 {
-                    _side = _triangles[i].Side.y;
-                    _pNormal = cutMesh.mesh.normals[_triangles[i].Vertices.y];
-
-                    _pO = cutMesh.mesh.vertices[_triangles[i].Vertices.y];
-                    _pX = cutMesh.mesh.vertices[_triangles[i].Vertices.x];
-                    _pY = cutMesh.mesh.vertices[_triangles[i].Vertices.z];
-
-                    _lA = cutMesh.mesh.vertices[_triangles[i].Vertices.x] - cutMesh.mesh.vertices[_triangles[i].Vertices.y]; 
-                    _lB = cutMesh.mesh.vertices[_triangles[i].Vertices.z] - cutMesh.mesh.vertices[_triangles[i].Vertices.y]; 
+                    _slicedTriangles.Add(new SlicedTriangleData
+                    {
+                        Triangle1Vertex1 = cutMesh.mesh.vertices[_triangles[i].Vertices.y],
+                        Triangle1Vertex2 = cutMesh.mesh.vertices[_triangles[i].Vertices.z],
+                        Triangle1Vertex3 = cutMesh.mesh.vertices[_triangles[i].Vertices.x],
+                        Triangle2Vertex1 = Vector3.zero,
+                        Triangle2Vertex2 = Vector3.zero,
+                        Triangle2Vertex3 = Vector3.zero,
+                        Triangle3Vertex1 = Vector3.zero,
+                        Triangle3Vertex2 = Vector3.zero,
+                        Triangle3Vertex3 = Vector3.zero,
+                        FirstSide = _triangles[i].Side.y
+                    });
                 }
                 else
                 {
-                    _side = _triangles[i].Side.z;
-                    _pNormal = cutMesh.mesh.normals[_triangles[i].Vertices.z];
-
-                    _pO = cutMesh.mesh.vertices[_triangles[i].Vertices.z];
-                    _pX = cutMesh.mesh.vertices[_triangles[i].Vertices.x];
-                    _pY = cutMesh.mesh.vertices[_triangles[i].Vertices.y];
-
-                    _lA = cutMesh.mesh.vertices[_triangles[i].Vertices.y] - cutMesh.mesh.vertices[_triangles[i].Vertices.z];
-                    _lB = cutMesh.mesh.vertices[_triangles[i].Vertices.x] - cutMesh.mesh.vertices[_triangles[i].Vertices.z];
-                }
-                Vector3 _pA = _pO + _lA * (Vector3.Dot(cutpoints[0] - _pO, _planeNormal) / Vector3.Dot(_lA, _planeNormal)); // First intersection Point
-                Vector3 _pB = _pO + _lB * (Vector3.Dot(cutpoints[0] - _pO, _planeNormal) / Vector3.Dot(_lB, _planeNormal)); // Second intersection Point
-
-                if(_side > 0) // If the unique point is on the right
-                {
-                    _rightMeshData.AddPoint(_pO, _pNormal, Vector2.zero);
-                    if(GeometryHelper.IsClockwiseTriangle(_pO, _pA, _pB, _pNormal))
+                    _slicedTriangles.Add(new SlicedTriangleData
                     {
-                        _rightMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                        _rightMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                    }
-                    else
-                    {
-                        _rightMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                        _rightMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                    }
-                    // Add other side triangles
-                    _leftMeshData.AddPoint(_pX, _pNormal, Vector2.zero);
-                    if (GeometryHelper.IsClockwiseTriangle(_pX, _pA, _pB, _pNormal))
-                    {
-                        _leftMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                        _leftMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                    }
-                    else
-                    {
-                        _leftMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                        _leftMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                    }
-                    _leftMeshData.AddPoint(_pY, _pNormal, Vector2.zero);
-                    if (Mathf.Abs(Vector3.Dot(Vector3.Cross((_pX - _pY).normalized, (_pA - _pY).normalized), _pNormal)) > Mathf.Abs(Vector3.Dot(Vector3.Cross((_pX - _pY).normalized, (_pB - _pY).normalized), _pNormal)))
-                    {
-                        if (GeometryHelper.IsClockwiseTriangle(_pY, _pX, _pA, _pNormal))
-                        {
-                            _leftMeshData.AddPoint(_pX, _pNormal, Vector2.zero);
-                            _leftMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                        }
-                        else
-                        {
-                            _leftMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                            _leftMeshData.AddPoint(_pX, _pNormal, Vector2.zero);
-                        }
-                    }
-                    else
-                    {
-                        if (GeometryHelper.IsClockwiseTriangle(_pY, _pX, _pB, _pNormal))
-                        {
-                            _leftMeshData.AddPoint(_pX, _pNormal, Vector2.zero);
-                            _leftMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                        }
-                        else
-                        {
-                            _leftMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                            _leftMeshData.AddPoint(_pX, _pNormal, Vector2.zero);
-                        }
-                    }
-                }
-                else // If the unique point is on the left
-                {
-                    _leftMeshData.AddPoint(_pO, _pNormal, Vector2.zero);
-                    if (GeometryHelper.IsClockwiseTriangle(_pO, _pA, _pB, _pNormal))
-                    {
-                        _leftMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                        _leftMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                    }
-                    else
-                    {
-                        _leftMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                        _leftMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                    }
-                    // Add other side triangles
-                    _rightMeshData.AddPoint(_pX, _pNormal, Vector2.zero);
-                    if (GeometryHelper.IsClockwiseTriangle(_pX, _pA, _pB, _pNormal))
-                    {
-                        _rightMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                        _rightMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                    }
-                    else
-                    {
-                        _rightMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                        _rightMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                    }
-                    _rightMeshData.AddPoint(_pY, _pNormal, Vector2.zero);
-                    if(Mathf.Abs(Vector3.Dot(Vector3.Cross((_pX - _pY).normalized, (_pA - _pY).normalized), _pNormal)) > Mathf.Abs(Vector3.Dot(Vector3.Cross((_pX - _pY).normalized, (_pB - _pY).normalized), _pNormal)))
-                    {
-                        if (GeometryHelper.IsClockwiseTriangle(_pY, _pX, _pA, _pNormal))
-                        {
-                            _rightMeshData.AddPoint(_pX, _pNormal, Vector2.zero);
-                            _rightMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                        }
-                        else
-                        {
-                            _rightMeshData.AddPoint(_pA, _pNormal, Vector2.zero);
-                            _rightMeshData.AddPoint(_pX, _pNormal, Vector2.zero);
-                        }
-                    }
-                    else
-                    {
-                        if (GeometryHelper.IsClockwiseTriangle(_pY, _pX, _pB, _pNormal))
-                        {
-                            _rightMeshData.AddPoint(_pX, _pNormal, Vector2.zero);
-                            _rightMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                        }
-                        else
-                        {
-                            _rightMeshData.AddPoint(_pB, _pNormal, Vector2.zero);
-                            _rightMeshData.AddPoint(_pX, _pNormal, Vector2.zero);
-                        }
-                    }
+                        Triangle1Vertex1 = cutMesh.mesh.vertices[_triangles[i].Vertices.z],
+                        Triangle1Vertex2 = cutMesh.mesh.vertices[_triangles[i].Vertices.x],
+                        Triangle1Vertex3 = cutMesh.mesh.vertices[_triangles[i].Vertices.y],
+                        Triangle2Vertex1 = Vector3.zero,
+                        Triangle2Vertex2 = Vector3.zero,
+                        Triangle2Vertex3 = Vector3.zero,
+                        Triangle3Vertex1 = Vector3.zero,
+                        Triangle3Vertex2 = Vector3.zero,
+                        Triangle3Vertex3 = Vector3.zero,
+                        FirstSide = _triangles[i].Side.z
+                    });
                 }
             }
 
         }
+
+        // Set Sliced Triangles Buffer
+        _slicedTriangles.Resize();
+        _kernelIndex = cutterShader.FindKernel(sliceTrianglesKernelName);
+        ComputeBuffer _slicedTriangleBuffer = new ComputeBuffer(_slicedTriangles.Array.Length, sizeof(float) * (9 * 3) + sizeof(int));
+        _slicedTriangleBuffer.SetData(_slicedTriangles.Array);
+        cutterShader.SetBuffer(_kernelIndex, slicedTrianglesBufferName, _slicedTriangleBuffer);
+        cutterShader.Dispatch(_kernelIndex, (_slicedTriangles.Array.Length / 8) + 1, 1, 1);
+        _slicedTriangleBuffer.GetData(_slicedTriangles.Array);
+        _slicedTriangleBuffer.Dispose();
+
+        int _side = 0;
+        Vector3 _triangleNormal = Vector3.zero;
+        for (int i = 0; i < _slicedTriangles.Array.Length; i++)
+        {
+            _side = _slicedTriangles[i].FirstSide;
+            _triangleNormal = Vector3.Cross(_slicedTriangles[i].Triangle1Vertex2 - _slicedTriangles[i].Triangle1Vertex1, _slicedTriangles[i].Triangle1Vertex3 - _slicedTriangles[i].Triangle1Vertex1);
+            for (int j = 0; j < 3; j++)
+            {
+                if (_side > 0)
+                    _rightMeshData.AddPoint(_slicedTriangles[i].GetVertexFromIndex(j), _triangleNormal, Vector2.zero);
+                else _leftMeshData.AddPoint(_slicedTriangles[i].GetVertexFromIndex(j), _triangleNormal, Vector2.zero);
+            }
+            for (int j = 3; j < 9; j++)
+            {
+                if (_side > 0)
+                    _leftMeshData.AddPoint(_slicedTriangles[i].GetVertexFromIndex(j), _triangleNormal, Vector2.zero);
+                else _rightMeshData.AddPoint(_slicedTriangles[i].GetVertexFromIndex(j), _triangleNormal, Vector2.zero);
+            }
+        }
+
         _rightMeshData.Resize();
         _leftMeshData.Resize();
 
@@ -243,6 +180,7 @@ public class MeshCutter : MonoBehaviour
         _leftMesh.SetUVs(0, _leftMeshData.UVs.Array);
 
         _filter.mesh = _leftMesh;
+        _filter.transform.position -= _planeNormal.normalized * .1f;
     }
 
     private void Update()
@@ -267,9 +205,49 @@ public class MeshCutter : MonoBehaviour
 
 }
 
-[System.Serializable]
 public struct TriangleData
 {
     public Vector3Int Vertices;
     public Vector3Int Side;
+}
+
+public struct SlicedTriangleData
+{
+    public Vector3 Triangle1Vertex1;
+    public Vector3 Triangle1Vertex2;
+    public Vector3 Triangle1Vertex3;
+    public Vector3 Triangle2Vertex1;
+    public Vector3 Triangle2Vertex2;
+    public Vector3 Triangle2Vertex3;
+    public Vector3 Triangle3Vertex1;
+    public Vector3 Triangle3Vertex2;
+    public Vector3 Triangle3Vertex3;
+    public int FirstSide;
+
+    public Vector3 GetVertexFromIndex(int _index)
+    {
+        switch (_index)
+        {
+            case 0:
+                return Triangle1Vertex1;
+            case 1:
+                return Triangle1Vertex2;
+            case 2:
+                return Triangle1Vertex3;
+            case 3:
+                return Triangle2Vertex1;
+            case 4:
+                return Triangle2Vertex2;
+            case 5:
+                return Triangle2Vertex3;
+            case 6:
+                return Triangle3Vertex1;
+            case 7:
+                return Triangle3Vertex2;
+            case 8:
+                return Triangle3Vertex3;
+            default:
+                return Vector3.zero;
+        }
+    }
 }

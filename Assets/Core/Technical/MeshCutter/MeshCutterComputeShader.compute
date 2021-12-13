@@ -1,14 +1,16 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CutMesh
+#pragma kernel SliceTriangles
+
+
+float3 planePoint;
+float3 planeNormal;
 
 struct TriangleData
 {
     int3 Vertices;
     int3 Side;
 };
-
-float3 planePoint;
-float3 planeNormal;
 StructuredBuffer<float3> meshPointsBuffer; // All points of the mesh
 RWStructuredBuffer<TriangleData> trianglesBuffer; // All side of the points according to the cutting plane
 
@@ -18,5 +20,93 @@ void CutMesh (uint3 id : SV_DispatchThreadID)
     for(int _j = 0; _j < 3; _j++)
     {
         trianglesBuffer[id.x].Side[_j] = sign(dot(meshPointsBuffer[trianglesBuffer[id.x].Vertices[_j]] - planePoint, planeNormal));
+    }
+}
+
+
+// ----------------------- // 
+
+struct SlicedTrianglesData
+{
+    float3 Triangle1Vertex1;
+    float3 Triangle1Vertex2;
+    float3 Triangle1Vertex3;
+    float3 Triangle2Vertex1;
+    float3 Triangle2Vertex2;
+    float3 Triangle2Vertex3;
+    float3 Triangle3Vertex1;
+    float3 Triangle3Vertex2;
+    float3 Triangle3Vertex3;
+    int FirstSide;
+};
+RWStructuredBuffer<SlicedTrianglesData> slicedTrianglesBuffer;
+
+[numthreads(8,1,1)]
+void SliceTriangles(uint3 id: SV_DispatchThreadID)
+{
+    float3 _origin = slicedTrianglesBuffer[id.x].Triangle1Vertex1; // Origin
+    float3 _a = slicedTrianglesBuffer[id.x].Triangle1Vertex2;  // First point of the triangle
+    float3 _b = slicedTrianglesBuffer[id.x].Triangle1Vertex3; // Second point of the triangle
+
+    float3 _la = _a - _origin; // Direction of origin -> _a
+    float3 _lb = _b - _origin; // Direction of origin -> _b
+    float3 _triangleNormal = cross(_la, _lb);
+
+    float3 _pa = _origin + _la * (dot(planePoint - _origin, planeNormal) / dot(_la, planeNormal)); // First intersection point
+    float3 _pb = _origin + _lb * (dot(planePoint - _origin, planeNormal) / dot(_lb, planeNormal)); // First intersection point
+
+    slicedTrianglesBuffer[id.x].Triangle1Vertex1 = _origin;
+    if(dot(cross( (_pa - _origin), (_pb - _origin)), _triangleNormal) > 0)
+    {
+        slicedTrianglesBuffer[id.x].Triangle1Vertex2 = _pa;
+        slicedTrianglesBuffer[id.x].Triangle1Vertex3 = _pb;        
+
+    }
+    else 
+    {
+        slicedTrianglesBuffer[id.x].Triangle1Vertex2 = _pb;
+        slicedTrianglesBuffer[id.x].Triangle1Vertex3 = _pa;   
+    }
+
+    slicedTrianglesBuffer[id.x].Triangle2Vertex1 = _a;
+    if(dot(cross( (_pa - _a), (_pb - _a)), _triangleNormal) > 0)
+    {
+        slicedTrianglesBuffer[id.x].Triangle2Vertex2 = _pa;
+        slicedTrianglesBuffer[id.x].Triangle2Vertex3 = _pb;
+
+    }
+    else 
+    {
+        slicedTrianglesBuffer[id.x].Triangle2Vertex2 = _pb;
+        slicedTrianglesBuffer[id.x].Triangle2Vertex3 = _pa;
+    }
+
+    slicedTrianglesBuffer[id.x].Triangle3Vertex1 = _b;
+    if(abs(dot(cross(normalize(_a - _b), normalize(_pa - _b)), _triangleNormal)) > abs(dot(cross(normalize(_a - _b), normalize(_pb - _b)),_triangleNormal)))
+    {      
+        if(dot(cross( (_a - _b), (_pa - _b)), _triangleNormal) > 0)
+        {
+            slicedTrianglesBuffer[id.x].Triangle3Vertex2 = _a;
+            slicedTrianglesBuffer[id.x].Triangle3Vertex3 = _pa;
+        }
+        else 
+        {
+            slicedTrianglesBuffer[id.x].Triangle3Vertex2 = _pa;
+            slicedTrianglesBuffer[id.x].Triangle3Vertex3 = _a;
+        }
+    }
+    else 
+    {
+        if(dot(cross( (_a - _b), (_pb - _b)), _triangleNormal) > 0)
+        {
+            slicedTrianglesBuffer[id.x].Triangle3Vertex2 = _a;
+            slicedTrianglesBuffer[id.x].Triangle3Vertex3 = _pb;
+        }
+        else 
+        {
+            slicedTrianglesBuffer[id.x].Triangle3Vertex2 = _pb;
+            slicedTrianglesBuffer[id.x].Triangle3Vertex3 = _a;
+
+        }
     }
 }
