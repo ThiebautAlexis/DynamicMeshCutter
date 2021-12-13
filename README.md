@@ -1,6 +1,6 @@
 # DynamicMeshCutter
 
-![Cut Meshes](./Screenshots and Videos/MeshCut.png)
+![Cut Meshes](Screenshots and Videos/MeshCut.png)
 
 Features: 
 - Slice a mesh according to a plane defined by three points.
