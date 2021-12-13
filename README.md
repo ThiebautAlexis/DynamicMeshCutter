@@ -6,6 +6,5 @@ Features:
 
 Upcomming Features: 
 - Fill the holes in the meshes.
-- Improve triangles cuts on convex meshes. 
-- Improve performance issues. 
+- Improve triangles cuts on convex meshes.
 - Handle Texture when a hole is filled.
